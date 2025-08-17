@@ -1,0 +1,124 @@
+EVENT UserEvent()
+{
+	string strDestination;
+	int nDestLen = 0;
+
+	LOG("GetDestination::UserEvent is interpreting");
+	
+	for (int i = 0; i < 3; i++) {
+		g_strDigits = GetDigits(_LEG_A_, DEST_DIGIT_LEN, "PhoneNumber_Enter");
+
+		nDestLen = strlen(g_strDigits);
+		if (nDestLen < DEST_DIGIT_LEN) {
+			if (nDestLen == 0) {
+				PlayAudio(_LEG_A_, "Destination_NoInput");			
+			}
+			else {
+				PlayAudio(_LEG_A_, "Destination_WrongInput");
+			}
+		} 
+		else {
+			g_strDest = g_strDigits;
+			int nRet = 0;
+			// Which server will be used for authorization?
+			if (USE_APP_SERVER == RADIUS_SERVER) {
+				nRet = RadiusAuthorizeUser();
+			}
+			if (USE_APP_SERVER == HTTP_SERVER) {
+				nRet = HTTPAuthorizeUser();
+			}
+
+			if (nRet > 0) {
+				
+				//Destination is OK. Starting the call !
+				LOG("Starting the call to " + g_strDest);
+				StartCall(_LEG_A_, _LEG_B_, g_strDest);
+				LOG("Calling " + g_strDigits);
+				RunScript("Ringing.txt");
+			}
+			else {
+				PlayAudio(_LEG_A_ , "Authorization_Rejected");	
+			}
+			
+		}
+	}
+
+	PlayAudio(_LEG_A_, "MaxDestTryOccured");
+	PlayAudio(_LEG_A_, "goodbye");
+	AbortSession();
+	
+}
+
+FUNCTION bool RadiusAuthorizeUser()
+{
+	AddRadiusAttr(1, "sabanci"); // user
+	AddRadiusAttr(2, "sabanci"); // pwd
+	AddRadiusAttr(4, "192.168.1.2"); // nas ip
+	AddRadiusAttr(31, _CALLING_NR_); // calling id 
+	AddRadiusAttr(30, _CALLED_NR_); // calling id 
+	AddRadiusAttr(44, i2str(_SESSION_ID_)); // acct session id
+
+	bool bRet = FALSE;
+	int nRet = SendRadiusRequest(1, APP_SERVER_RADIUS, 1812); 
+	if (nRet == 0)
+	{
+		string strSessionID = GetRadiusAttrValue(44);
+		string strBalance = GetRadiusVSAAttrValue(203); 
+		string strCurrency = GetRadiusVSAAttrValue(204); 
+		string strBillingModel = GetRadiusVSAAttrValue(205); 
+		string strMindStatus = GetRadiusVSAAttrValue(207); 
+		string strMaxCallDuration = GetRadiusVSAAttrValue(216); 
+		LOG("Authorize strSessionID:" + strSessionID);
+		LOG("Authorize strBalance:" + strBalance);
+		LOG("Authorize strCurrency:" + strCurrency);
+		LOG("Authorize strBillingModel:" + strBillingModel);
+		LOG("Authorize strMindStatus:" + strMindStatus);
+		LOG("Authorize strMaxCallDuration:" + strMaxCallDuration);
+		bRet = TRUE;
+	}
+	if (nRet == 1) 
+	{
+		LOG("Radius reject");
+	}
+	if (nRet == 2)
+	{
+		LOG("Radius send Technical problem");
+	}
+	ResetRadius();
+	return bRet;
+}
+FUNCTION int HTTPAuthorizeUser()
+{
+	LOG("HTTPAuthorizeUser is interpreting");
+	//Reset maximum call duration
+	g_nMaxCallDuration = 0;
+	string strMaxCallDuration;
+
+	AddXMLParam("User",  g_strUser); 
+	AddXMLParam("Destination",  g_strDest);  
+	bool bRet = PostHttpXML(APP_SERVER_HTTP, "/AuthorizeUser.asp");
+	if (bRet != TRUE) {
+		LOG("PostHttpXML Failed. Error Description:" + GetLastRuntimeErrorMessage());
+		PlayAudio(_LEG_A_, "Technical_Problem");
+		return -1;
+	}
+	
+	int nRetVal = 0;
+	string strDestAvailable = GetXMLParamValue("IsDestAvailable");
+	if (strDestAvailable == "1") {
+		strMaxCallDuration = GetXMLParamValue("MaxCallDuration");
+		g_nMaxCallDuration = str2i(strMaxCallDuration);
+		nRetVal = 1;
+	}
+	else {
+		nRetVal = 0;
+	}
+	ResetXML(); 
+	return nRetVal;
+}
+
+EVENT CallEnd()
+{
+	LOG("CallEnd in GetDestination is interpreting");
+	ReleaseSession();
+}

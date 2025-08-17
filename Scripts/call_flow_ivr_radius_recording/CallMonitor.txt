@@ -1,0 +1,139 @@
+EVENT CallEstablished()
+{
+	LOG("CallEstablished in CallMonitor is interpreting");
+	g_nMaxCallDuration = 500;
+
+	// Which server will be used for accounting?
+	int nRet = 0;
+	if (USE_APP_SERVER == RADIUS_SERVER) {
+		nRet = RadiusStartAccounting();
+	}
+	if (USE_APP_SERVER == HTTP_SERVER) {
+		nRet = HTTPStartAccounting();
+	}
+
+	if (nRet == FALSE) {
+		//CloseSession();
+	}
+	g_bCallEstablished = TRUE;
+	int nTimerID = StartTimer(g_nMaxCallDuration, "TimerExpired", TRUE);
+}
+
+EVENT CallReject()
+{
+	LOG("CallReject in CallMonitor is interpreting");
+	AbortSession();
+}
+
+EVENT TimerExpired()
+{	
+	LOG("TimerExpired in CallMonitor is interpreting");
+	
+	// Close Both LEG
+	EndCall(_LEG_A_);
+	EndCall(_LEG_B_);
+
+	// Which server will be used for accounting?
+	int nRet = 0;
+	if (USE_APP_SERVER == RADIUS_SERVER) {
+		nRet = RadiusStopAccounting();
+	}
+	if (USE_APP_SERVER == HTTP_SERVER) {
+		nRet = HTTPStopAccounting();
+	}
+
+	// Release session resources
+	ReleaseSession();
+}
+
+FUNCTION bool RadiusStartAccounting()
+{
+	AddRadiusAttr(1, "sabanci"); // user
+	AddRadiusAttr(44, i2str(_SESSION_ID_)); // acct session id
+	AddRadiusAttr(4, "192.168.1.2"); // nas ip
+	AddRadiusAttr(40, "1"); // Accounting Status Type(value=1 acc start)
+
+	bool bRet = FALSE;
+	int nRet = SendRadiusRequest(4, APP_SERVER_RADIUS, 1813); 
+	if (nRet == 0) {
+		LOG("RadiusStartAccounting successful");
+		bRet = TRUE;
+	}
+	if (nRet == 2) {
+		LOG("RadiusStartAccounting Radius send Technical problem");
+	}
+	ResetRadius();
+	return bRet;
+}
+
+FUNCTION bool RadiusStopAccounting()
+{
+	AddRadiusAttr(1, "sabanci"); // user
+	AddRadiusAttr(44, i2str(_SESSION_ID_)); // acct session id
+	AddRadiusAttr(4, "192.168.1.2"); // nas ip
+	AddRadiusAttr(40, "2"); // Accounting Status Type(value=2 acc stop)
+
+	bool bRet = FALSE;
+	int nRet = SendRadiusRequest(4, APP_SERVER_HTTP, 1813); 
+	if (nRet == 0) {
+		LOG("RadiusStopAccounting successful");
+		bRet = TRUE;
+	}
+	if (nRet == 2) {
+		LOG("RadiusStopAccounting Radius send Technical problem");
+	}
+	ResetRadius();
+	return bRet;
+}
+
+FUNCTION int HTTPStartAccounting()
+{
+	LOG("HTTPStartAccounting is interpreting");
+
+	AddXMLParam("User",  g_strUser); 
+	AddXMLParam("SessionID",  i2str(_SESSION_ID_));
+	AddXMLParam("AccountingType",  "1"); 
+	bool bRet = PostHttpXML(APP_SERVER_HTTP, "/Accounting.asp");
+	if (bRet != TRUE) {
+		LOG("PostHttpXML Failed. Error Description:" + GetLastRuntimeErrorMessage());
+		PlayAudio(_LEG_A_, "Technical_Problem");
+		return 0;
+	}
+	ResetXML(); 
+	return 1;
+}
+
+FUNCTION int HTTPStopAccounting()
+{
+	LOG("HTTPStopAccounting is interpreting");
+
+	AddXMLParam("User",  g_strUser); 
+	AddXMLParam("SessionID",  i2str(_SESSION_ID_));
+	AddXMLParam("AccountingType",  "2"); 
+	bool bRet = PostHttpXML(APP_SERVER_HTTP, "/Accounting.asp");
+	if (bRet != TRUE) {
+		LOG("PostHttpXML Failed. Error Description:" + GetLastRuntimeErrorMessage());
+		PlayAudio(_LEG_A_, "Technical_Problem");
+		return 0;
+	}
+	ResetXML(); 
+	return 1;
+}
+
+EVENT CallEnd()
+{
+	LOG("CallEnd in CallMonitor is interpreting");
+	
+	if (g_bCallEstablished == TRUE) {
+		// Which server will be used for accounting?
+		int nRet = 0;
+		if (USE_APP_SERVER == RADIUS_SERVER) {
+			nRet = RadiusStopAccounting();
+		}
+		if (USE_APP_SERVER == HTTP_SERVER) {
+			nRet = HTTPStopAccounting();
+		}
+	}
+
+	CloseSession();
+}

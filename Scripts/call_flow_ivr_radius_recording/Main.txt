@@ -1,0 +1,95 @@
+bool bDebug = FALSE;
+
+//Internal Globals
+
+int StartTimerID;
+//Defines and constants
+int USER_DIGIT_LEN = 8;
+int PASS_DIGIT_LEN = 4;
+int DEST_DIGIT_LEN = 5;
+
+int MENU_SEL_DIGIT_LEN = 1;
+string APP_SERVER_RADIUS = "212.156.115.107";
+string APP_SERVER_HTTP = "192.168.1.2";
+
+int HTTP_SERVER = 0;
+int RADIUS_SERVER = 1;
+int USE_APP_SERVER = 0;
+
+int g_nDestRetry;
+string g_strDigits;
+string g_strUser;
+string g_strPassword;
+string g_strDest;
+int g_nMaxCallDuration;
+
+bool g_bCallEstablished = FALSE;
+
+FUNCTION main()
+{
+	RunScript("NewSession.txt");
+}
+
+FUNCTION CloseSession()
+{
+	LOG("CloseSession in Main is interpreting");
+	LOG("_CLOSING_LEG_ = " + i2str(_CLOSING_LEG_ ));
+	if (_CLOSING_LEG_ == _LEG_A_) {
+		LOG("Closing LEG is LEG_A");
+		EndCall(_LEG_B_);
+	}
+	else {
+		LOG("Closing LEG is LEG_B");
+		EndCall(_LEG_A_);
+		//CallAgain();
+	}
+
+	LOG("-------SESSION_ID:[" + i2str(_SESSION_ID_) + "]---------");
+	LOG("Session has closed.");
+	ReleaseSession();
+}
+
+FUNCTION AbortSession()
+{
+	EndCall(_LEG_A_);
+	LOG("-------SESSION_ID:[" + i2str(_SESSION_ID_) + "]---------");
+	LOG("Session has aborted.");
+	ReleaseSession();
+}
+
+FUNCTION CallAgain()
+{
+	string strCallAgain;
+
+	//Press 1 to call again, 0 to close call
+	strCallAgain = GetDigits(_LEG_A_, 1, "Call_Again");
+	if (strCallAgain == "1") {
+		RunScript("GetDestination.txt", "UserEvent");	
+	}
+	else {
+		PlayAudio(_LEG_A_, "goodbye");
+		AbortSession();
+	}
+}
+
+FUNCTION ChangeLanguage()
+{
+	LOG("In ChangeLanguage");
+	if (bDebug == TRUE) {	
+		g_strDigits = "1111";
+	}
+	else {
+		g_strDigits = GetDigits(_LEG_A_, USER_DIGIT_LEN, "pincode_enter");
+	}
+
+	if (g_strDigits == "*") {
+		if (_LANGUAGE_ == "english") {
+			_LANGUAGE_ = "german";
+		}
+		else {
+			_LANGUAGE_ = "english";
+		}
+		ChangeLanguage();
+	}
+}
+
