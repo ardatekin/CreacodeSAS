@@ -1,0 +1,144 @@
+EVENT NewCall()
+{
+    LOG("-------SESSION_ID:[" + i2str(_SESSION_ID_) + "]---------");
+    LOG("CREACODE-> NewCall received. Session has started!");
+    LOG("CREACODE-> Calling Number:" + _CALLING_NR_);
+    
+    g_NewCallAccepted = TRUE;
+    AcceptCall();
+    AnswerCall();
+
+    /////////////// Testing purposes
+    //////////////////////////////////
+    /*
+    bool bRet = OpenAudioChannel(_LEG_A_);
+    if (bRet == FALSE) {
+        LOG("CREACODE-> OpenAudioChannel returned FALSE");
+        EndCall(_LEG_B_);
+        ReleaseSession();
+    }
+    
+    Question_1_Test();
+    EndCall(_LEG_A_);
+    ReleaseSession();
+    */
+    //////////////////////////////////
+    
+    g_ConnectionId = ODBCConnect("DSN=creacodesas_pg;UID=postgres;PWD=142857");
+    LOG("CREACODE-> NewCall g_ConnectionId: " + i2str(g_ConnectionId));
+    if (g_ConnectionId < 1) {
+        LOG("CREACODE-> NewCall, odbc db connection failed");
+    }
+    
+    
+}
+
+EVENT CallActive()
+{
+    LOG("CREACODE-> NewCall:CallActive is received.");
+ 
+    
+    g_strCalledNumber = _CALLED_NR_;
+    
+    // Disaridan Creacode ofise cagri gondererek aranacak numarayi girmek icin
+    // Eyebeam ile test yaparken GetDestination fonksiyonu kapatilmali
+    
+    int nGetDestination = 0;   
+    if (nGetDestination == 1) {
+        GetDestination();
+    } else {
+        StartCall(_LEG_A_, _LEG_B_, g_strCalledNumber);
+        RunScript("Ringing.txt");
+    }
+}
+
+FUNCTION Question_1_Test() 
+{
+    g_nQuestionNumber = 1;
+    int i = 0;
+    int nLen = 0;
+    bool gotResult = FALSE;
+    int nSelectionCount = 3;
+    string strSelection = "";
+    
+    //PlayAudio(_LEG_B_, "survey_sayfirst.wav");
+    //PlayAudio(_LEG_B_, "survey_firstquestion.wav");
+    for (i = 0; i < LOOP_COUNTER; i++)
+    {
+        LOG("Just starting to collect digits of questions 1");
+        g_strDigits = GetDigits(_LEG_A_, SURVEY_DIGIT_LEN, "survey_q1options.wav");
+        
+        LOG("CREACODE-> Question_1::Received digit: " + g_strDigits);
+        nLen = strlen(g_strDigits);
+        
+        if (((nLen == 0) && (i != (LOOP_COUNTER-1))) || (str2i(g_strDigits) > nSelectionCount)) {
+            PlayAudio(_LEG_A_, "survey_couldntgetanswer.wav");
+            continue;
+        } else {
+            InsertAnswer(g_nQuestionNumber, str2i(g_strDigits));
+            strSelection = "survey_q1s" +  g_strDigits + ".wav";
+            PlayAudio(_LEG_A_, strSelection);
+            PlayAudio(_LEG_A_, "survey_youselected.wav");
+            break;
+        }
+    }
+
+}
+
+FUNCTION GetDestination()
+{
+    g_nQuestionNumber = 1;
+    int i = 0;
+    int nLen = 0;
+    bool gotResult = FALSE;
+    int nSelectionCount = 3;
+    string strSelection = "";
+    
+    bool bRet = OpenAudioChannel(_LEG_A_);
+    if (bRet == FALSE) {
+        LOG("CREACODE-> OpenAudioChannel returned FALSE");
+        EndCall(_LEG_A_);
+        ReleaseSession();
+    }
+    
+    PlayAudio(_LEG_A_, "beep.wav");
+    
+    for (i = 0; i < LOOP_COUNTER; i++)
+    {
+        g_strDigits = GetDigits(_LEG_A_, DEST_DIGIT_LEN, "beep.wav");
+        
+        LOG("CREACODE-> GetDestination::Received digit: " + g_strDigits);
+        nLen = strlen(g_strDigits);
+        
+        if (((nLen == 0) || (nLen < DEST_DIGIT_LEN) || (strmid(g_strDigits, 0, 2) != "00") ) && (i != (LOOP_COUNTER-1))) {
+            continue;
+        } else {
+            //// Make a call to received destination
+            g_strCalledNumber = g_strDigits;
+            g_strDigits = "";
+            
+            StartCall(_LEG_A_, _LEG_B_, g_strCalledNumber);
+            RunScript("Ringing.txt");
+            break;
+        }
+    }
+
+    CloseAudioChannel(_LEG_A_);
+
+}
+
+EVENT CallEnd()
+{
+    LOG("CREACODE-> CallEnd in newsession");
+    if (g_NewCallAccepted == TRUE) {
+        EndCall(_LEG_A_);
+    } 
+    ReleaseSession();
+}
+
+
+
+
+
+
+

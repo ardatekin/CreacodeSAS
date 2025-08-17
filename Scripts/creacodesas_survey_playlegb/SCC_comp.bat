@@ -1,0 +1,2 @@
+..\..\Bin\SCC.exe main.txt out.sc
+pause

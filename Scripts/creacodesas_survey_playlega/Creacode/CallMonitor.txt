@@ -1,0 +1,62 @@
+EVENT CallEstablished()
+{
+    LOG("Creacode-> CallMonitor:: CallEstablised in CallMonitor is interpreting");
+
+    int nRet = 0;
+    g_Pound = FALSE;
+    g_IsTimerExpired = FALSE;
+    g_strConnectTime = GetTime();
+    g_CallEstablished = TRUE;
+    LOG("Creacode-> CallMonitor::Connect Time - " + FormatTime(g_strConnectTime, "%H:%M:%S.000 UTC %a %b %d %Y"));
+}
+
+
+EVENT CallReject()
+{
+    LOG("Creacode-> CallMonitor:: CallReject in Ringing is interpreting");
+    LOG("Creacode-> CallMonitor:: Reject Cause: " + i2str(_RESPONSE_));
+
+    if (g_CallEstablished == TRUE) {
+        LOG("Creacode-> CallMonitor:: Reject message for re-INVITE ");
+        EndCall(_LEG_B_);
+    }
+    
+
+/*
+    JoinLegs(_LEG_IVR_, _LEG_A_);
+
+    bool bRet = OpenAudioChannel(_LEG_A_);
+    if (bRet == FALSE) {
+        LOG("Creacode-> CallMonitor:: OpenAudioChannel returned FALSE");
+        EndCall(_LEG_A_);
+        ReleaseSession();
+    }    
+*/
+    if (_RESPONSE_ == 404) {
+        LOG("Creacode-> CallMonitor:: Called number is not found");
+        //PlayAudio(_LEG_A_, "invalidno");
+    }
+    if (_RESPONSE_ == 486) {
+        LOG("Creacode-> CallMonitor:: Called number is busy");
+    }
+    if ((_RESPONSE_ == 408) || (_RESPONSE_ == 480) || (_RESPONSE_ == 484) || (_RESPONSE_ == 487)) {
+        LOG("Creacode-> CallMonitor:: Called number does not answer");
+    }
+    if (_RESPONSE_ == 500) {
+        LOG("Creacode-> CallMonitor:: Interval Server Error (Sip Cause 500)");
+    }
+
+    AbortSession();
+}
+
+EVENT CallEnd()
+{
+    LOG("Creacode-> CallMonitor:: CallEnd in CallMonitor is interpreting");
+    CloseSession();
+}
+
+EVENT OnDigit()
+{
+    LOG("Creacode-> CallMonitor:: OnDigit in CallMonitor is interpreting");
+    SendDigit(_LEG_B_, _DIGIT_, _DIGIT_DURATION_);
+}
