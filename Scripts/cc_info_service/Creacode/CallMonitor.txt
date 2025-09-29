@@ -1,0 +1,57 @@
+// SIP ACK received from LEG_A
+EVENT CallEstablished()
+{
+    LOG("CallMonitor:: CallEstablised in CallMonitor is interpreting");
+
+    g_IsTimerExpired = FALSE;
+    g_strConnectTime = GetTime();
+    g_CallEstablished = TRUE;
+    LOG("CallMonitor::Connect Time - " + FormatTime(g_strConnectTime, "%H:%M:%S.000 UTC %a %b %d %Y"));
+}
+
+// re-INVITE rejected by LEG_A
+EVENT CallReject()
+{
+    LOG("CallMonitor:: CallReject in Ringing is interpreting");
+    LOG("CallMonitor:: Reject Cause: " + i2str(_RESPONSE_));
+
+    if (g_CallEstablished == TRUE) {
+        LOG("CallMonitor:: Reject message for re-INVITE ");
+        EndCall(_LEG_B_);
+    }
+    
+	//ReconnectCallerToIVR()
+
+
+	LOG("CallMonitor re-INVITE rejected with SIP code: " + i2str(_RESPONSE_));
+	
+    AbortSession();
+}
+
+FUNCTION ReconnectCallerToIVR()
+{
+	// Media binding failed 
+	// Reconnect LEG_A to IVR
+    JoinLegs(_LEG_IVR_, _LEG_A_);
+
+    bool bRet = OpenAudioChannel(_LEG_A_);
+    if (bRet == FALSE) {
+        LOG("CallMonitor:: OpenAudioChannel returned FALSE");
+        EndCall(_LEG_A_);
+        ReleaseSession();
+    }    
+}
+
+// SIP BYE received  (call closed) by a party
+EVENT CallEnd()
+{
+    LOG("CallMonitor:: CallEnd in CallMonitor is interpreting");
+    CloseSession();
+}
+
+// Pass SIP INFO digits to LEG_B
+EVENT OnDigit()
+{
+    LOG("CallMonitor:: OnDigit in CallMonitor is interpreting");
+    SendDigit(_LEG_B_, _DIGIT_, _DIGIT_DURATION_);
+}

@@ -1,0 +1,290 @@
+// New call (SIP INVITE) received from LEG_A
+EVENT NewCall()
+{
+    LOG("-------SESSION_ID:[" + i2str(_SESSION_ID_) + "]---------");
+    LOG("NewCall received. Session has started!");
+    LOG("Calling Number:" + _CALLING_NR_);
+    
+    string callid = GetRequestHeaderByName("call-id");
+    LOG("Call-Id:" + callid);
+    
+    string genHeader = GetRequestHeaderByName("max-forwards");
+    LOG("Max-Forwards:" + genHeader);
+    
+    AcceptCall();  	// SIP 180 Ringing sent to LEG_A
+    AnswerCall();	// SIP 200-OK sent to LEGA_A
+    g_NewCallAccepted = TRUE;
+}
+
+// SIP ACK is received from LEG_A
+EVENT CallActive()
+{
+	LOG("Call is active");
+    bool bRet = OpenAudioChannel(_LEG_A_);
+    if (bRet == FALSE) {
+        LOG("OpenAudioChannel returned FALSE");
+        EndCall(_LEG_A_); // SEND SIP BYE to LEG_A
+        ReleaseSession(); 
+    }
+    
+	 
+    PlayAudio(_LEG_A_, "welcome.wav");
+	
+	// Testing
+	RunScript("Creacode\\NewSession.txt", "ConnectToAgent");
+
+	// Change the session promoting language by callers selection
+	ChangeLanguage();
+
+	// Testing
+	//PlayAmount(812, 25);
+	
+	// Testing
+	//PlayExpireDate();
+	
+	if (GetCreditCardNumber() == FALSE) {
+		PlayAudio(_LEG_A_, "connect_to_agent.wav");
+		RunScript("Creacode\\NewSession.txt", "ConnectToAgent");
+
+		//LOG("Starting call to human Agent");
+		//StartCall(_LEG_A_, _LEG_B_, g_strFixedAgentNumber);
+		//RunScript("Creacode\\Ringing.txt");
+	}
+	
+	if (GetCreditCardPassword() == FALSE) {
+		PlayAudio(_LEG_A_, "connect_to_agent.wav");
+		RunScript("Creacode\\NewSession.txt", "ConnectToAgent");
+	}
+	
+	// Authenticate CC and get active debt
+	// Select your CC querying method
+	// 1: Calling a Web based API
+	// 2: Radius Authentication Server
+	// 3: Direct Database lookup
+	// 4: Fixed dev test
+	
+	PlayAudio(_LEG_A_, "querying_cc_debt.wav");
+	PlayAudio(_LEG_A_, "please_wait.wav");
+	
+	int nAuthMethod = 4;
+	bool bAuth = FALSE;
+	if (nAuthMethod == 1) {
+		LOG("Web API CC authentication");
+		if (WebApiAuthenticateUser() == TRUE) {
+			PlayAmount(g_iCCDebtInt, g_iCCDebtDec);
+			bAuth = TRUE;
+		}
+	} 
+	else if (nAuthMethod == 2) {
+		LOG("Radius Server CC authentication");
+		if (RadiusAuthenticateUser() == TRUE) {
+			PlayAmount(g_iCCDebtInt, g_iCCDebtDec);
+			bAuth = TRUE;
+		}
+	} 
+	else if (nAuthMethod == 3) {
+		LOG("Direct DB lookup for CC authentication");
+		if (DatabaseAuthenticateUser() == TRUE) {
+			PlayAmount(g_iCCDebtInt, g_iCCDebtDec);
+			bAuth = TRUE;
+		}
+	}
+	else if (nAuthMethod == 4) {
+		LOG("Fixed value CC authentication");
+		string strActiveCCDebt = "712.25";
+		LOG("Active CC debt: " + strActiveCCDebt);
+		
+		g_iCCDebtInt = str2i(strleft(strActiveCCDebt, strfind(strActiveCCDebt, ".")));
+		g_iCCDebtDec = str2i(strright(strActiveCCDebt, strlen(strActiveCCDebt) - strfind(strActiveCCDebt, ".") - 1));
+		LOG("g_iCCDebtInt:" + i2str(g_iCCDebtInt));
+		LOG("g_iCCDebtDec:" + i2str(g_iCCDebtDec));
+		
+		PlayAmount(g_iCCDebtInt, g_iCCDebtDec);
+		bAuth = TRUE;
+	}
+	
+	if (bAuth == FALSE) {
+		// Authentication process went wrong 
+		// Connect call to an agent 
+		RunScript("Creacode\\NewSession.txt", "ConnectToAgent");
+	}
+}
+
+FUNCTION bool WebApiAuthenticateUser()
+{
+	AddXMLParam("User",  g_strUser);
+	AddXMLParam("Pwd",  g_strCCPassword); 
+	AddXMLParam("SessionID",  i2str(_SESSION_ID_));
+	AddXMLParam("InfoRequest",  "GetCCDebt");
+	
+	bool bRet = PostHttpXML(APP_SERVER_HTTP, CC_AUTHENTICATION_API);
+	if (bRet != TRUE) {
+		LOG("PostHttpXML Failed. Error Description:" + GetLastRuntimeErrorMessage());
+		PlayAudio(_LEG_A_, "Technical_Problem");
+		return FALSE;
+	}
+	
+	string strActiveCCDebt = GetXMLParamValue("ActiveCCDebt");
+	
+
+	g_iCCDebtInt = str2i(strleft(strActiveCCDebt, strfind(strActiveCCDebt, ".")));
+	g_iCCDebtDec = str2i(strright(strActiveCCDebt, strlen(strActiveCCDebt) - strfind(strActiveCCDebt, ".") - 1));
+	
+	ResetXML(); 
+	
+	return TRUE;
+}
+
+
+FUNCTION bool DatabaseAuthenticateUser()
+{
+	g_ConnectionId = ODBCConnect("DSN=creacodesas_pg;UID=postgres;PWD=postgres"); // use your db user and password
+    LOG("NewCall g_ConnectionId: " + i2str(g_ConnectionId));
+	
+    if (g_ConnectionId < 1) {
+        LOG("NewCall, odbc db connection failed");
+		return FALSE;
+    } else {
+		string strActiveCCDebt = QueryUserCC(g_strUser, g_strCCPassword);
+		g_iCCDebtInt = str2i(strleft(strActiveCCDebt, strfind(strActiveCCDebt, ".")));
+		g_iCCDebtDec = str2i(strright(strActiveCCDebt, strlen(strActiveCCDebt) - strfind(strActiveCCDebt, ".") - 1));
+	}
+
+	return TRUE;
+}
+
+
+EVENT ConnectToAgent()
+{
+	// Start a new call (SIP INVITE) to LEG_B
+	// LEG_B: A local SIP number or an outbound number etc.
+	LOG("Starting call to human Agent");
+    StartCall(_LEG_A_, _LEG_B_, g_strFixedAgentNumber);
+    RunScript("Creacode\\Ringing.txt");
+}
+
+FUNCTION bool GetCreditCardNumber()
+{
+	int iLoop = 0;
+	int iLen = 0;
+	g_strDigits = "";
+	g_strCCNumber = "";
+	
+	while (iLoop < LOOP_COUNTER) {
+		g_strDigits = GetDigits(_LEG_A_, CC_DIGIT_LEN, "enter_cc_number.wav"); // Enter 6 digits card number
+		LOG("Collected last digits " + g_strDigits + " Loop Count : " + i2str(iLoop));
+		iLoop++;
+
+		iLen = strlen(g_strDigits);
+		if (iLen != CC_DIGIT_LEN) {
+			PlayAudio(_LEG_A_, "invalid_entry.wav");
+		} else {
+			g_strCCNumber = g_strDigits;
+			break;
+		} 
+	}
+	
+	if (strlen(g_strCCNumber) == 0) {
+		return FALSE;
+	}
+	
+	return TRUE;
+}
+
+FUNCTION bool GetCreditCardPassword()
+{
+	int iLoop = 0;
+	int iLen = 0;
+	g_strDigits = "";
+	g_strCCPassword = "";
+	
+	while (iLoop < LOOP_COUNTER) {
+		g_strDigits = GetDigits(_LEG_A_, CC_PIN_LEN, "enter_cc_password.wav");
+		LOG("Collected cc pwd " + g_strDigits + " Loop Count : " + i2str(iLoop));
+		iLoop++;
+
+		iLen = strlen(g_strDigits);
+		if (iLen != CC_PIN_LEN) {
+			PlayAudio(_LEG_A_, "invalid_entry.wav");
+		} else {
+			g_strCCPassword = g_strDigits;
+			break;
+		} 
+	}
+	
+	if (strlen(g_strCCPassword) == 0) {
+		return FALSE;
+	}
+	
+	return TRUE;
+	
+}
+
+
+FUNCTION bool GetCreditCardLastExpireDate()
+{
+	int iLoop = 0;
+	int iLen = 0;
+	g_strDigits = "";
+	g_strCCExpDate = "";
+	
+	while (iLoop < LOOP_COUNTER) {
+		g_strDigits = GetDigits(_LEG_A_, CC_EXP_DATE_LEN, "enter_cc_expire_date.wav");
+		LOG("Collected expire date " + g_strDigits + " Loop Count : " + i2str(iLoop));
+		iLoop++;
+
+		iLen = strlen(g_strDigits);
+		if (iLen != CC_EXP_DATE_LEN) {
+			PlayAudio(_LEG_A_, "invalid_entry.wav");
+		} else {
+			g_strCCExpDate = g_strDigits;
+			break;
+		} 
+	}
+	
+	if (strlen(g_strCCExpDate) == 0) {
+		return FALSE;
+	}
+	
+	return TRUE;
+	
+}
+
+FUNCTION bool GetCreditCardLastCVV()
+{
+	int iLoop = 0;
+	int iLen = 0;
+	g_strDigits = "";
+	while (iLoop < LOOP_COUNTER) {
+		g_strDigits = GetDigits(_LEG_A_, CC_CVV_LEN, "enter_cc_cvv.wav");
+		LOG("Collected expire date " + g_strDigits + " Loop Count : " + i2str(iLoop));
+		iLoop++;
+
+		iLen = strlen(g_strDigits);
+		if (iLen != CC_CVV_LEN) {
+			PlayAudio(_LEG_A_, "invalid_entry.wav");
+		} else {
+			g_strCCCVV = g_strDigits;
+			break;
+		} 
+	}
+	
+	if (strlen(g_strCCCVV) == 0) {
+		return FALSE;
+	}
+	
+	return TRUE;
+	
+}
+
+
+// Call is closed by LEG_A
+EVENT CallEnd()
+{
+    LOG("CallEnd in newsession");
+    if (g_NewCallAccepted == TRUE) {
+        EndCall(_LEG_A_);
+    }
+	
+    ReleaseSession();
+}

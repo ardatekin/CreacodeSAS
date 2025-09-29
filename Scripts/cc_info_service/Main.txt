@@ -1,0 +1,376 @@
+// Global variables
+
+string APP_SERVER_RADIUS = "192.168.1.3";
+string APP_SERVER_HTTP = "192.168.1.5";
+
+int LANG_SEL_DIGIT_LEN = 1;
+int CC_DIGIT_LEN = 6;
+int CC_PIN_LEN = 4; 
+int CC_EXP_DATE_LEN = 4;
+int CC_CVV_LEN = 3;
+
+int LOOP_COUNTER = 1;
+
+bool g_CallEstablished = FALSE;
+bool g_NewCallAccepted = FALSE;
+
+string g_strDigits;
+string g_strUser;
+string g_strPassword;
+string g_strDest;
+string g_strDestSip;
+string g_strDestRadius;
+string g_strh323confid;
+int g_iTimerId;
+
+string g_strCalledNumber;
+string g_strSetupTime;
+string g_strConnectTime;
+string g_strDiscTime;
+string g_strRemoteIp;
+
+int iTimerID;
+
+// Radius
+int g_iBillingModel;
+int g_iRadiusRetVal;
+int g_CreditTime;
+
+// Database
+int g_ConnectionId = 0;
+
+bool g_PlayingRinging;
+bool g_IsTimerExpired;
+
+string g_strBalanceExpireDate;
+
+string g_strCCNumber;
+string g_strCCPassword;
+string g_strCCExpDate;
+string g_strCCCVV;
+int g_iCCDebtInt;
+int g_iCCDebtDec;
+
+string g_strSessionID;
+string g_strCallingNr;
+string g_strFixedAgentNumber = "5555";
+
+string CC_AUTHENTICATION_API = "/CCAuthentication";
+
+FUNCTION main()
+{
+    g_PlayingRinging = FALSE;
+    g_strRemoteIp = "84.51.35.5";
+	
+	// Set default language
+    _LANGUAGE_ = "english";
+	
+    g_strSessionID = randHex(16);
+    g_strCallingNr = _CALLING_NR_;
+    RunScript("Creacode\\NewSession.txt");
+}
+
+// A global function
+FUNCTION ChangeLanguage()
+{
+	int iLoop = 0;
+	int iLoopCounter = 1;
+	int iLen = 0;
+	g_strDigits = "";
+	while (iLoop < iLoopCounter) {
+		g_strDigits = GetDigits(_LEG_A_, LANG_SEL_DIGIT_LEN, "changelanguage.wav");
+		LOG("ChangeLanguage GetDigits " + g_strDigits + " Loop Count : " + i2str(iLoop));
+		iLoop++;
+
+		iLen = strlen(g_strDigits);
+		if (iLen == 0) {
+			_LANGUAGE_ = "english";
+			PlayAudio(_LEG_A_, "continue_with_language.wav");
+		} else {
+			if (g_strDigits == "1") { 
+				_LANGUAGE_ = "german";  
+			} 
+			if (g_strDigits == "2") { 
+				_LANGUAGE_ = "french";  
+			} 
+			if (g_strDigits == "3") { 
+				_LANGUAGE_ = "italian";  
+			} 
+			if (g_strDigits == "4") { 
+				_LANGUAGE_ = "spanish";  
+			} 
+			if (g_strDigits == "5") { 
+				_LANGUAGE_ = "russian";  
+			} 
+			if (g_strDigits == "6") { 
+				_LANGUAGE_ = "turkish";  
+			}
+		
+			PlayAudio(_LEG_A_, "continue_with_language.wav");
+		} 
+	}
+}
+
+
+FUNCTION bool RadiusAuthenticateUser()
+{
+	AddRadiusAttr(1, g_strCCNumber); // User
+	AddRadiusAttr(2, g_strCCPassword); // Password
+	AddRadiusAttr(4, _IVR_IP_); // Nas Ip Address
+	AddRadiusAttr(5, i2str(_SESSION_ID_)); 
+	AddRadiusAttr(61, "0"); // Nas Port Type
+	AddRadiusAttr(31, g_strCallingNr); // Calling Id 
+	AddRadiusAttr(44, i2str(_SESSION_ID_)); // Acct Session Id
+	AddRadiusVSAAttr(24, "h323-conf-id=" + g_strh323confid, 9); // VSA Cisco, h323-conf-id
+	AddRadiusVSAAttr(33, "h323-gw-id=nicivr", 9); // VSA Cisco, h323-gw-id
+
+	bool bRet = FALSE;
+    string sTemp;
+
+    LOG("RadiusAuthenticateUser before SendRadiusRequest...");
+	int iRet = SendRadiusRequest(1, APP_SERVER_RADIUS, 1645); 
+
+	if (iRet == 0)
+	{
+		string strReturnCode = GetRadiusVSAAttrValue(103);
+        g_iRadiusRetVal = str2i(strright(strReturnCode, strlen(strReturnCode) - (strfind(strReturnCode,"=")+1)));
+		LOG("Authorize h323-return-code:" + strReturnCode);
+		
+		if (g_iRadiusRetVal == 0) 
+		{
+			string strDebt = GetRadiusVSAAttrValue(101);
+			string strBillingModel = GetRadiusVSAAttrValue(109);
+
+			LOG("Authorize bank-credit-debt-amount:" + strDebt);
+			LOG("Authorize bank-billing-model:" + strBillingModel);
+
+            sTemp = strright(strDebt, strlen(strDebt) - (strfind(strDebt,"=")+1));
+			g_iCCDebtInt = str2i(strleft(sTemp,strfind(sTemp,".")));
+            g_iCCDebtDec = str2i(strright(sTemp,strlen(sTemp) - strfind(sTemp,".")-1));
+			g_iBillingModel = str2i(strright(strBillingModel, 1));
+			bRet = TRUE;
+		} else {
+			LOG("CC Authentication Radius reject VSA ReturnCode:" + strReturnCode);	
+			bRet = FALSE;
+		}
+	}
+	if (iRet == 1) 
+	{
+		string strReturnCode = GetRadiusVSAAttrValue(103);
+        g_iRadiusRetVal = str2i(strright(strReturnCode, strlen(strReturnCode) - (strfind(strReturnCode,"=")+1)));
+		LOG("CC Authentication Radius reject ReturnCode:" + i2str(g_iRadiusRetVal));
+		bRet = FALSE;
+	}
+	if (iRet == 2)
+	{
+		g_iRadiusRetVal = 99;
+		LOG("CC Authentication Radius technical problem");
+		bRet = FALSE;
+	}
+
+	ResetRadius();
+
+	return bRet;
+}
+
+// Multilanguage PlayAmount function
+FUNCTION PlayAmount(int iAmountInt, int iAmountDec) 
+{
+	string strCurrencyInt = "";
+    string strCurrencyDec = "";
+
+    // Select currency file names based on language
+	string currentLanguage = _LANGUAGE_;
+    if (currentLanguage == "english") {
+        strCurrencyInt = "dollars.wav";
+        strCurrencyDec = "cents.wav";
+    }
+    if (currentLanguage == "german") {
+        strCurrencyInt = "euros.wav";
+        strCurrencyDec = "cents.wav";
+    }
+    if (currentLanguage == "french") {
+        strCurrencyInt = "euros.wav";
+        strCurrencyDec = "cents.wav";
+    }
+    if (currentLanguage == "italian") {
+        strCurrencyInt = "euros.wav";
+        strCurrencyDec = "cents.wav";
+    }
+    if (currentLanguage == "turkish") {
+        strCurrencyInt = "lira.wav";
+        strCurrencyDec = "kurus.wav";
+    }
+    if (currentLanguage == "spanish") {
+        strCurrencyInt = "euros.wav";
+        strCurrencyDec = "cents.wav";
+    }
+    if (currentLanguage == "russian") {
+        strCurrencyInt = "rubles.wav";
+        strCurrencyDec = "kopeks.wav";
+    }
+
+	LOG("Credit Int:" + i2str(iAmountInt));
+    LOG("Credit Dec:" + i2str(iAmountDec));
+
+    LOG("Currency Int:" + strCurrencyInt);
+    LOG("Currency Dec:" + strCurrencyDec);
+
+    // Play integer amount with correct currency
+    if (iAmountInt > 0) {
+		LOG("Playing currency Int");
+        PlayCredit(_LEG_A_, iAmountInt, strCurrencyInt);
+    }
+    // Play decimal amount with correct currency
+    if (iAmountDec > 0) {
+		LOG("Playing currency Dec");
+        PlayCredit(_LEG_A_, iAmountDec, strCurrencyDec);
+    }
+
+    PlayAudio(_LEG_A_, "thankyou.wav");
+    PlayAudio(_LEG_A_, "goodbye.wav");
+    AbortSession();
+}
+
+FUNCTION PlayExpireDate()
+{
+    g_strBalanceExpireDate = "01/27/2025";
+    int month = str2i(strmid(g_strBalanceExpireDate, 0, 2));
+    int day = str2i(strmid(g_strBalanceExpireDate, 3, 2));
+    int year = str2i(strmid(g_strBalanceExpireDate, 6, 4));
+
+    PlayCredit(_LEG_A_, day, "");
+
+
+    if (month == 1) {
+        PlayAudio(_LEG_A_, "january.wav");
+    }
+    if (month == 2) {
+        PlayAudio(_LEG_A_, "february.wav");
+    }
+    if (month == 3) {
+        PlayAudio(_LEG_A_, "march.wav");
+    }
+    if (month == 4) {
+        PlayAudio(_LEG_A_, "april.wav");
+    }
+    if (month == 5) {
+        PlayAudio(_LEG_A_, "may.wav");
+    }
+    if (month == 6) {
+        PlayAudio(_LEG_A_, "june.wav");
+    }
+    if (month == 7) {
+        PlayAudio(_LEG_A_, "july.wav");
+    }
+    if (month == 8) {
+        PlayAudio(_LEG_A_, "august.wav");
+    }
+    if (month == 9) {
+        PlayAudio(_LEG_A_, "september.wav");
+    }
+    if (month == 10) {
+        PlayAudio(_LEG_A_, "october.wav");
+    }
+    if (month == 11) {
+        PlayAudio(_LEG_A_, "november.wav");
+    }
+    if (month == 12) {
+        PlayAudio(_LEG_A_, "december.wav");
+    }
+
+    PlayCredit(_LEG_A_, year, "");
+}
+
+FUNCTION DevTestFunction()
+{
+    string strHeader="<sip:3624350600@10.100.199.59>;privacy=off;screen=no";
+
+    int nStart = strfind(strHeader, ":") + 1;
+    int nEnd = strfind(strHeader, "@"); 
+
+    string strDiversionNr = strmid(strHeader, nStart, nEnd - nStart);
+
+    LOG("strDiversion: " + strDiversionNr);
+}
+
+// Database sql INSERT sample
+FUNCTION InsertAnswer(int nQuestionId, int nAnswerId)
+{
+    LOG("nQuestionId: " + i2str(nQuestionId));
+    
+    string strSQL = "insert into answer (id, question_id, option_id, called_number) select nextval('answer_id_seq'), question_id, option_id, '" + g_strCalledNumber + "' from question_option_xref  where question_id=" + i2str(nQuestionId) + " order by option_id asc offset " + i2str(nAnswerId - 1) + " limit 1";
+    LOG("strSQL: " + strSQL);
+    
+    int nRet = ODBCExecute(g_ConnectionId, strSQL);
+    if (nRet != 0) {
+         LOG("Record inserted. question_id: " + i2str(nQuestionId) + " option_id: " +  i2str(nAnswerId - 1));
+    } else {
+        LOG("Record insert failed!!! question_id: " + i2str(nQuestionId) + " option_id: " +  i2str(nAnswerId - 1));
+    }
+}
+
+// Database sql UPDATE sample
+FUNCTION UpdateTelephoneStatus(string strCallStatus)
+{
+    LOG("nCallStatus: " + strCallStatus);
+
+    string strSQL = "update telephone_list set call_result=" + strCallStatus + " where tel_no='" + g_strCalledNumber + "'";
+    LOG("strSQL: " + strSQL);
+    int nRet = ODBCExecute(g_ConnectionId, strSQL);
+    if (nRet != 0) {
+        LOG("Call status updated successfully for Tel Number: " + g_strCalledNumber);
+    } else {
+        LOG("Call status update failed for Tel Number: " + g_strCalledNumber);
+    }
+
+}
+
+// Database sql SELECT sample
+FUNCTION string QueryUserCC(string cc_number, string cc_pwd)
+{
+    int nRet = ODBCExecuteSelect(g_ConnectionId, "select cc_balance from cc_users where cc_num='" + cc_number + "' " + "cc_pwd='" + cc_pwd + "'"); 
+    
+	string cc_balance = "";
+    if (nRet > 0) {
+        while (ODBCIsEOF(g_ConnectionId) == 0) {
+			cc_balance = ODBCGetStringField(g_ConnectionId, "cc_balance");
+			
+            ODBCMoveNext(g_ConnectionId);
+        }
+    } else {
+        LOG("NewCall, query failed");
+    }
+	
+	return cc_balance;
+}
+
+
+
+
+FUNCTION AbortSession()
+{
+    EndCall(_LEG_A_);
+    LOG("-------SESSION_ID:[" + i2str(_SESSION_ID_) + "]---------");
+    LOG("Session has aborted.");
+    ReleaseSession();
+}
+
+FUNCTION CloseSession()
+{
+    LOG("CloseSession in Main is interpreting");
+    if (_CLOSING_LEG_ == _LEG_A_) {
+        LOG("Closing LEG is LEG_A");
+        EndCall(_LEG_B_);
+    }
+    else {
+        LOG("Closing LEG is LEG_B");
+        //JoinLegs(_LEG_A_, _LEG_IVR_);
+        //RunScript("Creacode\\AfterCall.txt");
+        EndCall(_LEG_A_);
+    }
+
+    LOG("-------SESSION_ID:[" + i2str(_SESSION_ID_) + "]---------");
+    LOG("GP_CloseSession:: Session has closed.");
+    ReleaseSession();
+}

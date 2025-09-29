@@ -1,0 +1,76 @@
+// SIP 180 Ringing received from LEG_B
+EVENT CallRinging()
+{
+    LOG("Ringing:: CallRinging in Ringing is interpreting");
+    g_PlayingRinging = TRUE;
+		
+	// Play virtual ringtone to LEG_A
+    //PlayBackgroundAudio(_LEG_A_, "Ringing", TRUE, 2);
+    LOG("Ringing:: CallRinging is ENDED");
+}
+
+// SIP 18x Ringing with SDP received from LEG_B
+EVENT CallRingingWithMedia()
+{
+    LOG("CallRingingWithMedia in Ringing is interpreting");
+}
+
+// SIP 2xx Received from LEG_B
+EVENT CallAnswered()
+{
+    LOG("Ringing:: CallAnswered in Ringing is interpreting");
+    if (g_PlayingRinging == TRUE)
+    {
+        g_PlayingRinging = FALSE;
+        StopBackgroundAudio(_LEG_A_);
+    }
+    
+    CloseAudioChannel(_LEG_A_);
+	
+	// Sends SIP re-INVITE to LEG_A to bind the media
+    JoinLegs(_LEG_B_, _LEG_A_);
+
+    RunScript("Creacode\\CallMonitor.txt");
+}
+
+
+EVENT CallReject()
+{
+    LOG("Ringing:: CallReject in Ringing is interpreting");
+    LOG("Ringing:: Reject Cause: " + i2str(_RESPONSE_));
+
+    if (g_PlayingRinging == TRUE) {
+        g_PlayingRinging = FALSE;
+        StopBackgroundAudio(_LEG_A_);
+    }
+    
+    if (_RESPONSE_ == 404) {
+        LOG("Ringing:: Called number is not found");
+        //PlayAudio(_LEG_A_, "invalidno");
+    }
+    if (_RESPONSE_ == 486) {
+        LOG("Ringing:: Called number is busy");
+
+    }
+    if ((_RESPONSE_ == 408) || (_RESPONSE_ == 480) || (_RESPONSE_ == 484) || (_RESPONSE_ == 487)) {
+        LOG("Ringing:: Called number does not answer");
+
+    }
+    if (_RESPONSE_ == 500) {
+        LOG("Ringing:: Interval Server Error (Sip Cause 500)");
+
+    }
+
+    AbortSession();
+}
+
+// SIP BYE received from LEG_A
+EVENT CallEnd()
+{
+    LOG("Ringing:: CallEnd in Ringing is interpreting");
+    if (g_PlayingRinging == TRUE) {
+        StopBackgroundAudio(_LEG_A_);
+    }
+
+    CloseSession();
+}
