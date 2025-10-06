@@ -9,10 +9,10 @@
   - [Voice File Generation](#voice-file-generation)
 - [Deployment Example](#deployment-example)
 - [Test Call Flow](#test-call-flow)
-  - [Main.txt – Entry Point](#maintxt-entry-point)
-  - [NewSession.txt – Session Logic and Interaction](#newsessiontxt-session-logic-and-interaction)
-  - [Ringing.txt – Bridging to Live Agent](#ringingtxt-bridging-to-live-agent)
-  - [CallMonitor.txt – Call Supervision and Media Handling](#callmonitortxt-call-supervision-and-media-handling)
+  - [Main.txt – Entry Point](#maintxt--entry-point)
+  - [NewSession.txt – Session Logic and Interaction](#newsessiontxt--session-logic-and-interaction)
+  - [Ringing.txt – Bridging to Live Agent](#ringingtxt--bridging-to-live-agent)
+  - [CallMonitor.txt – Call Supervision and Media Handling](#callmonitortxt--call-supervision-and-media-handling)
 - [Outbound Routing Configuration](#outbound-routing-configuration)
 
 # Features
