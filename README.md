@@ -174,13 +174,14 @@ After the script completes, verify the following:
 
 ---
 
+
 ## Test Call Flow
 
 To validate the installation, deploy a sample IVR script located under the `Scripts/` directory and place a SIP call to the system.  
-
 A practical starting point is the demo service `Scripts\cc_info_service`, which implements a **credit card information inquiry** using RADIUS, direct database, or Web API access.
 
 ### Script Compilation
+
 All IVR logic is written in a domain-specific scripting language and must be compiled before execution.  
 Compilation is performed with the **SCC.exe** (Script Compiler) tool provided in the `Bin/` directory.  
 Inside each service folder (for example, `Scripts\cc_info_service\Creacode`), a batch file named `SCC_comp.bat` compiles the source script:
@@ -190,42 +191,256 @@ Inside each service folder (for example, `Scripts\cc_info_service\Creacode`), a 
 pause
 ```
 
-This generates the binary script file **`out.sc`**, which is automatically loaded by the IVR runtime either when the service starts or dynamically reloaded during operation without restarting the IVR service. Developers can modify script logic, recompile it instantly, and apply the new version to active call flows in real time.
+This generates the binary script file `out.sc`, which is automatically loaded by the IVR runtime either when the service starts or dynamically reloaded during operation without restarting the IVR service. Developers can modify script logic, recompile it instantly, and apply the new version to active call flows in real time.
 
 ---
 
+## Call Flow Overview
+
 ### Main.txt – Entry Point
-Defines global parameters, initializes the session, and sets the default language.  
-Execution begins here when a call arrives.  
-It provides shared functions such as language selection, RADIUS authentication, balance playback, and session control.
+
+When a call arrives, execution begins from `Main.txt`, which defines global parameters, functions, and initializes the session.
+
+The main script also calls:
+
+```text
+RunScript("Creacode\NewSession.txt");
+```
+
+#### Responsibilities
+
+- Define all global variables (server IPs, digit lengths, session identifiers, etc.)  
+- Set the default language (`_LANGUAGE_ = "english"`)  
+- Create a unique session ID (`randHex(16)`)  
+- Start the session by calling the `NewSession.txt` script  
+- Implement global functions used across all scripts, such as:  
+  - `ChangeLanguage()` — selects and switches languages via DTMF  
+  - `RadiusAuthenticateUser()` — authenticates the caller against RADIUS and retrieves account data  
+  - `PlayAmount()` — announces monetary values in the proper language and currency  
+  - `PlayExpireDate()` — reads expiry dates as spoken text  
+  - Database helper functions for `INSERT`, `UPDATE`, and `SELECT`  
+  - `AbortSession()` / `CloseSession()` — cleanly terminate sessions  
+
+This script demonstrates how call logic can combine RADIUS, SQL, multilingual playback, and runtime logic in one cohesive flow.
 
 ---
 
 ### NewSession.txt – Session Logic and Interaction
-Implements the per-call interaction, handling SIP INVITE → DTMF data collection → account authentication.  
-Supports multiple authentication paths (HTTP API, RADIUS, DB lookup, or fixed demo data).  
-Uses `PlayAmount()` to announce retrieved balances and transfers callers to an agent when needed.
+
+Once `Main.txt` invokes `RunScript("Creacode\NewSession.txt")`, the **per-call logic** is handled here.  
+This script defines the complete runtime interaction between the caller and the IVR system—from SIP handshake to final call release.
+
+#### Key Workflow
+
+#```text
+EVENT NewCall()
+{
+    // Triggered on incoming SIP INVITE; logs session details and sends 180/200 responses.
+}
+```
+Triggered when a SIP INVITE arrives.  
+Logs session details (`Call-ID`, `Max-Forwards`) and responds with `180 Ringing` and `200 OK` to establish the call.
+
+#```text
+EVENT CallActive()
+{
+    // Executed after SIP ACK; opens audio channel and starts interactive prompts.
+}
+```
+Executed after the SIP ACK is received.  
+Opens the audio channel, plays `welcome.wav`, and guides the caller through interactive prompts.
+
+The caller may:  
+- Change language (`ChangeLanguage()`)  
+- Enter credit card details via DTMF
+
+#### Credit Card Data Collection
+
+Functions implemented for secure input capture:  
+
+```text
+GetCreditCardNumber()      # collects the 6-digit card number
+GetCreditCardPassword()    # collects the 4-digit PIN
+GetCreditCardLastExpireDate() # collects expiry date (MMYY)
+GetCreditCardLastCVV()     # collects the 3-digit CVV
+```
+
+Each input is validated, replaying `invalid_entry.wav` on error, with retry logic controlled by `LOOP_COUNTER`.
+
+#### Authentication and Balance Query
+
+After digits are collected, the IVR retrieves account or credit information using one of several methods, chosen by `nAuthMethod`:
+
+1. **Web API Call** (`WebApiAuthenticateUser`)  
+   Sends XML data to the configured HTTP endpoint (e.g. `/CCAuthentication`) and parses the returned `ActiveCCDebt` field.  
+2. **RADIUS Authentication** (`RadiusAuthenticateUser`)  
+   Authenticates with the RADIUS server and obtains balance or debt data via VSA attributes.  
+3. **Direct Database Lookup** (`DatabaseAuthenticateUser`)  
+   Connects through ODBC to PostgreSQL (`DSN=creacodesas_pg`) to query account records.  
+4. **Fixed Test Mode**  
+   Uses predefined values for demo or offline testing.
+
+Each result is announced using the multilingual `PlayAmount()` function, which speaks both integer and fractional parts of the balance.
+
+#### Agent Escalation
+
+If authentication fails or the caller chooses to speak with an agent, the system executes:
+
+```text
+ConnectToAgent()
+```
+
+This triggers the next stage handled by `Ringing.txt`.
+
+```text
+EVENT CallEnd()
+{
+    // Triggered when caller or agent hangs up; gracefully ends the call and releases resources.
+}
+```
+Gracefully ends the SIP dialog and releases resources when LEG_A hangs up.
 
 ---
 
 ### Ringing.txt – Bridging to Live Agent
-Handles SIP signaling while connecting the caller (LEG_A) to a human agent (LEG_B).  
-Manages ringback tone, monitors call progress, and bridges both legs via SIP re-INVITE.  
-Logs rejections and ends sessions gracefully.
+
+When the caller cannot be authenticated or chooses to speak with a human operator, control passes to `ConnectToAgent()`, which initiates a new call (LEG_B) toward the configured agent (e.g., extension **5555**) and executes `Ringing.txt`.
+
+This script manages all SIP signaling during the agent connection phase.
+
+```text
+EVENT CallRinging()
+{
+    // Handles 180 Ringing from remote side; optionally plays ringback tone.
+}
+```
+Triggered when a `180 Ringing` response is received from LEG_B.  
+Optionally plays a ringback tone to the caller on LEG_A.
+
+```text
+EVENT CallRingingWithMedia()
+{
+    // Triggered when early media (18x with SDP) is received before answer.
+}
+```
+Logs scenarios where early media is received (18x with SDP).
+
+```text
+EVENT CallAnswered()
+{
+    // Triggered when agent answers; bridges call legs and runs CallMonitor script.
+}
+```
+Triggered when the agent answers (2xx response).  
+Stops the ringback tone, bridges both call legs, and continues monitoring:
+
+```text
+JoinLegs(_LEG_B_, _LEG_A_);
+RunScript("Creacode\CallMonitor.txt");
+```
+
+```text
+EVENT CallReject()
+{
+    // Handles SIP rejections or failed re-INVITEs; logs cause and aborts session.
+}
+```
+Handles all SIP rejection causes (`404`, `486`, `408`, `480`, `484`, `487`, `500`).  
+Each response is logged, and the session ends via `AbortSession()`.
+
+```text
+EVENT CallEnd()
+{
+    // Triggered when caller or agent hangs up; gracefully ends the call and releases resources.
+}
+```
+Triggered when the caller (LEG_A) hangs up.  
+Stops audio and releases both call legs cleanly via `CloseSession()`.
+
+#### Summary
+
+`Ringing.txt` finalizes the agent connection phase of `cc_info_service`, demonstrating the IVR’s **B2BUA** (Back-to-Back User Agent) behavior:
+
+- Independently manages SIP dialogs on both legs  
+- Handles in-band and out-of-band ringing  
+- Dynamically bridges and monitors live calls  
+- Logs and reacts to standard SIP cause codes  
 
 ---
 
 ### CallMonitor.txt – Call Supervision and Media Handling
-Monitors the live bridged call:  
-- Confirms connection and logs timestamps  
-- Handles re-INVITE rejection or call drops  
-- Passes in-call DTMF to the agent  
-- Supports reconnecting the caller to IVR if needed  
-- Finalizes sessions and CDRs  
 
-Together, these four scripts demonstrate the full call lifecycle — from inbound SIP INVITE, through interactive authentication, to live-agent escalation and monitored teardown.
+After bridging, `CallMonitor.txt` manages the live two-party conversation, supervising SIP re-INVITEs, DTMF signaling, and disconnections.
 
----
+```text
+EVENT CallEstablished()
+{
+    // Triggered after SIP ACK confirms call setup; records timestamp for monitoring.
+}
+```
+Triggered once SIP ACK is received from LEG_A.  
+Marks session active (`g_CallEstablished = TRUE`) and records connection time using `GetTime()`.
+
+```text
+EVENT CallReject()
+{
+    // Handles SIP rejections or failed re-INVITEs; logs cause and aborts session.
+}
+```
+Handles re-INVITE rejection (e.g., failed media renegotiation).  
+If already established, terminates LEG_B and optionally reattaches the caller to IVR:
+
+```text
+ReconnectCallerToIVR()
+```
+
+```text
+FUNCTION ReconnectCallerToIVR()
+{
+    // Reconnects caller audio back to IVR after a failed agent bridge.
+}
+```
+Demonstrates reconnection of caller audio back to IVR:  
+
+```text
+JoinLegs(_LEG_IVR_, _LEG_A_);
+OpenAudioChannel(_LEG_A_);
+```
+
+If reopening fails, the call is ended gracefully with `EndCall()` and `ReleaseSession()`.
+
+```text
+EVENT CallEnd()
+{
+    // Triggered when caller or agent hangs up; gracefully ends the call and releases resources.
+}
+```
+Triggered when either party hangs up.  
+Logs and calls `CloseSession()` to finalize CDRs and free resources.
+
+```text
+EVENT OnDigit()
+{
+    // Captures mid-call DTMF tones and relays them to the agent leg.
+}
+```
+Relays DTMF tones pressed by the caller to LEG_B using:
+
+```text
+SendDigit(_LEG_B_, _DIGIT_, _DIGIT_DURATION_);
+```
+
+#### Summary
+
+`CallMonitor.txt` represents the **final supervision layer** of the call:  
+- Confirms successful setup and logs timestamps  
+- Handles re-INVITE or call rejection gracefully  
+- Supports optional reconnection to IVR  
+- Relays DTMF mid-call between caller and agent  
+- Ensures accurate session closure and logging  
+
+Together, the scripts `Main.txt`, `NewSession.txt`, `Ringing.txt`, and `CallMonitor.txt` define the complete IVR call lifecycle — from initial INVITE to live-agent conversation and teardown.
+
 
 ## Outbound Routing Configuration
 
