@@ -197,7 +197,7 @@ This generates the binary script file `out.sc`, which is automatically loaded by
 
 ## Call Flow Overview
 
-### [Main.txt](./Scripts/cc_info_service/Creacode/Main.txt) – Entry Point
+### [Main.txt](./Scripts/cc_info_service/Main.txt) – Entry Point
 
 When a call arrives, execution begins from `Main.txt`, which defines global parameters, functions, and initializes the session.
 
