@@ -197,7 +197,7 @@ This generates the binary script file `out.sc`, which is automatically loaded by
 
 ## Call Flow Overview
 
-### Main.txt – Entry Point
+### [Main.txt](./Scripts/cc_info_service/Creacode/Main.txt) – Entry Point
 
 When a call arrives, execution begins from `Main.txt`, which defines global parameters, functions, and initializes the session.
 
@@ -225,14 +225,14 @@ This script demonstrates how call logic can combine RADIUS, SQL, multilingual pl
 
 ---
 
-### NewSession.txt – Session Logic and Interaction
+### [NewSession.txt](./Scripts/cc_info_service/Creacode/NewSession.txt) – Session Logic and Interaction
 
 Once `Main.txt` invokes `RunScript("Creacode\NewSession.txt")`, the **per-call logic** is handled here.  
 This script defines the complete runtime interaction between the caller and the IVR system—from SIP handshake to final call release.
 
 #### Key Workflow
 
-#```text
+```text
 EVENT NewCall()
 {
     // Triggered on incoming SIP INVITE; logs session details and sends 180/200 responses.
@@ -241,7 +241,7 @@ EVENT NewCall()
 Triggered when a SIP INVITE arrives.  
 Logs session details (`Call-ID`, `Max-Forwards`) and responds with `180 Ringing` and `200 OK` to establish the call.
 
-#```text
+```text
 EVENT CallActive()
 {
     // Executed after SIP ACK; opens audio channel and starts interactive prompts.
@@ -302,7 +302,7 @@ Gracefully ends the SIP dialog and releases resources when LEG_A hangs up.
 
 ---
 
-### Ringing.txt – Bridging to Live Agent
+### [Ringing.txt](./Scripts/cc_info_service/Creacode/Ringing.txt) – Bridging to Live Agent
 
 When the caller cannot be authenticated or chooses to speak with a human operator, control passes to `ConnectToAgent()`, which initiates a new call (LEG_B) toward the configured agent (e.g., extension **5555**) and executes `Ringing.txt`.
 
@@ -368,7 +368,7 @@ Stops audio and releases both call legs cleanly via `CloseSession()`.
 
 ---
 
-### CallMonitor.txt – Call Supervision and Media Handling
+### [CallMonitor.txt](./Scripts/cc_info_service/Creacode/CallMonitor.txt) – Call Supervision and Media Handling
 
 After bridging, `CallMonitor.txt` manages the live two-party conversation, supervising SIP re-INVITEs, DTMF signaling, and disconnections.
 
