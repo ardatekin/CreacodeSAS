@@ -1,3 +1,25 @@
+<#
+===============================================================================
+  Creacode SIP Application Server - Deployment Script
+  (c) 2025 Arda Tekin. All rights reserved.
+  Contact: ardatekin78@gmail.com
+===============================================================================
+
+  License:
+  This deployment script is distributed as part of the Creacode SIP Application
+  Server package for demo and evaluation purposes only.
+
+  Any commercial use, redistribution, or modification beyond demo mode requires
+  prior written authorization from the developer.
+
+  For production licensing or extended usage terms, please contact:
+      Arda Tekin  |  ?? ardatekin78@gmail.com
+
+  Developed by Arda Tekin (ardatekin78@gmail.com)
+  with technical assistance from OpenAI ChatGPT.
+===============================================================================
+#>
+
 param(
     [switch]$all,
     [switch]$help,
