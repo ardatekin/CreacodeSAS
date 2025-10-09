@@ -60,7 +60,7 @@ string CC_AUTHENTICATION_API = "/CCAuthentication";
 FUNCTION main()
 {
     g_PlayingRinging = FALSE;
-    g_strRemoteIp = "84.51.35.5";
+    g_strRemoteIp = "192.168.1.55";
 	
 	// Set default language
     _LANGUAGE_ = "english";
@@ -373,4 +373,5 @@ FUNCTION CloseSession()
     LOG("-------SESSION_ID:[" + i2str(_SESSION_ID_) + "]---------");
     LOG("GP_CloseSession:: Session has closed.");
     ReleaseSession();
+
 }
