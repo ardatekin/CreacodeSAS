@@ -14,30 +14,7 @@
   - [Ringing.txt – Bridging to Live Agent](#ringingtxt--bridging-to-live-agent)
   - [CallMonitor.txt – Call Supervision and Media Handling](#callmonitortxt--call-supervision-and-media-handling)
 - [Outbound Routing Configuration](#outbound-routing-configuration)
-
-# Features
-
-### Carrier-Grade SIP and Voice Processing Server
-Designed for high-performance, scalable SIP call handling and advanced voice processing.
-
-### Proven in Production
-Over 10 years of proven runtime reliability in production environments.
-# Creacode SIP Application Server (IVR Platform)
-
-## Table of Contents
-- [Features](#features)
-- [Use Cases](#use-cases)
-- [Deployment](#deployment)
-  - [Prerequisites](#prerequisites)
-  - [Deployment Steps](#deployment-steps)
-  - [Voice File Generation](#voice-file-generation)
-- [Deployment Example](#deployment-example)
-- [Test Call Flow](#test-call-flow)
-  - [Main.txt – Entry Point](#maintxt--entry-point)
-  - [NewSession.txt – Session Logic and Interaction](#newsessiontxt--session-logic-and-interaction)
-  - [Ringing.txt – Bridging to Live Agent](#ringingtxt--bridging-to-live-agent)
-  - [CallMonitor.txt – Call Supervision and Media Handling](#callmonitortxt--call-supervision-and-media-handling)
-- [Outbound Routing Configuration](#outbound-routing-configuration)
+- [Licensing](#licensing)
 
 # Features
 
@@ -1046,3 +1023,17 @@ route update order_id=2 proxy_ip=192.168.1.55 proxy_port=5050
 
 ---
 
+
+
+
+## Licensing
+
+The Creacode SIP Application Server is distributed with full technical functionality but operates in **demo mode** by default.  
+In this mode, the system supports up to **3 concurrent SIP sessions** and **3 RTP voice channels**, intended for evaluation, testing, and proof-of-concept deployments.
+
+For **production use** or environments requiring higher call capacity, an appropriate license is required.  
+Please contact the developer to obtain a production license or commercial usage terms:
+
+📧 **ardatekin78@gmail.com**
+
+All other rights are reserved. Unauthorized redistribution, modification, or commercial deployment of this software beyond demo mode is not permitted without explicit authorization.
