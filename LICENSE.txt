@@ -1,0 +1,10 @@
+Creacode SIP Application Server (IVR Platform)
+Copyright (c) 2025 Arda Tekin. All rights reserved.
+
+This software is provided for evaluation and demo purposes only.
+The demo version supports up to 3 concurrent SIP sessions and 3 RTP channels.
+
+For commercial or production use, please contact:
+ardatekin78@gmail.com
+
+Unauthorized redistribution, modification, or commercial deployment beyond demo mode is prohibited.
