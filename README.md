@@ -85,6 +85,8 @@ The following components are required:
 Deployment is fully automated via the `deploy-ivr.ps1` script.  
 It supports both **all-in-one execution** and **step-by-step execution** for granular control.
 
+Open **PowerShell as Administrator**.
+
 #### Usage
 ```powershell
 .\deploy-ivr.ps1 -all        # Run all 12 steps
