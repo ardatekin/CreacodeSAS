@@ -27,7 +27,8 @@ Over 10 years of proven runtime reliability in production environments.
 ### Real-Time Event-Driven Script Engine
 Enables rapid service development with hot-reloadable call flows. Supported capabilities include:
 
-- SIP call control and multi-language RTP voice processing via scripts  
+- SIP call control and multi-language voice prompting using pre-recorded voice files
+- Multilingual Speech-to-Text (STT) and Text-to-Speech (TTS) using Google Speech services 
 - On-the-fly compilation and runtime script reloading  
 - DTMF detection and processing  
 - Outbound Web Service API calls  
@@ -104,12 +105,13 @@ Open **PowerShell as Administrator**.
 7. Install ODBC driver  
 8. Create ODBC DSN (`creacodesas_pg_local`)  
 9. Restore database from `creacodesas_postgres_backup.sql`  
-10. Install voice generation prerequisites (Python, gTTS, pydub, ffmpeg)  
+10. Install voice generation and Speech Services prerequisites (Python runtime, virtual environment, gTTS, required Python libraries, ffmpeg)  
 11. Generate multilingual voice files using `generate_all_voice.py`  
 12. Finalize and start the IVR service:  
     - Patch `.ini` files  
     - Compile service scripts  
-    - Install/start Windows service  
+    - Install/start Windows service
+    - Start STTProxy.py and TTSProxy.py services
     - Apply firewall rules  
 
 
