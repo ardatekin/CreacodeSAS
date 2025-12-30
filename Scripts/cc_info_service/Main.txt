@@ -9,7 +9,7 @@ int CC_PIN_LEN = 4;
 int CC_EXP_DATE_LEN = 4;
 int CC_CVV_LEN = 3;
 
-int LOOP_COUNTER = 1;
+int LOOP_COUNTER = 3;
 
 bool g_CallEstablished = FALSE;
 bool g_NewCallAccepted = FALSE;

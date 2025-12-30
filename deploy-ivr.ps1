@@ -61,7 +61,7 @@ if ($help) {
     Write-Host "  7. ODBC driver install"
     Write-Host "  8. Create DSN"
     Write-Host "  9. Restore database"
-    Write-Host " 10. Voice generation prerequisites (Python, gTTS, pydub, ffmpeg)"
+    Write-Host " 10. Speech prerequisites (Python, gTTS, pydub, ffmpeg, Google STT/TTS libs)"
     Write-Host " 11. Generate voice files"
     Write-Host " 12. Patch ini + Compile scripts + Service install/start + Firewall rule"
     exit
@@ -73,9 +73,26 @@ function Ensure-Dir($path) {
 }
 
 function Get-ActiveIPv4 {
+    # Prefer the interface which owns the default IPv4 route (0.0.0.0/0).
+    # This avoids selecting virtual adapters like vEthernet (Default Switch).
+    $route = Get-NetRoute -DestinationPrefix "0.0.0.0/0" -ErrorAction SilentlyContinue |
+             Sort-Object RouteMetric, InterfaceMetric |
+             Select-Object -First 1
+
+    if ($route -and $route.InterfaceIndex) {
+        $ip = Get-NetIPAddress -InterfaceIndex $route.InterfaceIndex -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+              Where-Object { $_.IPAddress -notlike "169.254.*" -and $_.IPAddress -ne "127.0.0.1" } |
+              Select-Object -First 1 -ExpandProperty IPAddress
+        if ($ip) { return $ip }
+    }
+
+    # Fallback: choose the first non-virtual, non-link-local IPv4.
     Get-NetIPAddress -AddressFamily IPv4 |
-        Where-Object { $_.IPAddress -notlike "169.*" -and $_.IPAddress -ne "127.0.0.1" } |
-        Sort-Object -Property PrefixLength |
+        Where-Object {
+            $_.IPAddress -notlike "169.254.*" -and
+            $_.IPAddress -ne "127.0.0.1" -and
+            $_.InterfaceAlias -notmatch "vEthernet|Default Switch|WSL|Hyper-V|VirtualBox|VMware|TAP|Loopback"
+        } |
         Select-Object -First 1 -ExpandProperty IPAddress
 }
 
@@ -216,6 +233,25 @@ function Run-Step10 {
     if (Test-Path $pythonExe) {
         & $pythonExe -m pip install --upgrade pip
         & $pythonExe -m pip install gTTS pydub
+
+        # --- STT/TTS (run from Bin) ---
+        $binDir = Join-Path $InstallDir "Bin"
+        $sttVenvDir = Join-Path $binDir "sttvenv"
+        $sttVenvPy  = Join-Path $sttVenvDir "Scripts\python.exe"
+        $sttVenvPip = Join-Path $sttVenvDir "Scripts\pip.exe"
+
+        if (-not (Test-Path $sttVenvPy)) {
+            Write-Host "Creating Python venv for STT/TTS under Bin: $sttVenvDir" -ForegroundColor Yellow
+            & $pythonExe -m venv $sttVenvDir
+        }
+
+        if (Test-Path $sttVenvPip) {
+            Write-Host "Installing Google STT/TTS + proxy prerequisites into venv..." -ForegroundColor Yellow
+            & $sttVenvPip install --upgrade pip
+            & $sttVenvPip install fastapi "uvicorn[standard]" google-cloud-speech google-cloud-texttospeech
+        } else {
+            Write-Host "WARNING: venv pip not found at $sttVenvPip" -ForegroundColor Yellow
+        }
     } else {
         Write-Host "ERROR: Python installation failed or not found." -ForegroundColor Red
     }
@@ -339,15 +375,74 @@ function Run-Step12 {
         try {
             if ($service.Status -eq "Running") {
                 Write-Host "Service '$svcName' is running. Restarting..." -ForegroundColor Yellow
-                Restart-Service -Name $svcName -Force -ErrorAction Stop
+                Restart-Service -Name $svcName -Force
             } else {
                 Write-Host "Service '$svcName' is not running. Starting..." -ForegroundColor Yellow
-                Start-Service -Name $svcName -ErrorAction Stop
+                Start-Service -Name $svcName
             }
             $svc = Get-Service -Name $svcName
             Write-Host "Service state: $($svc.Status)" -ForegroundColor Green
-        } catch {
-            Write-Host "ERROR: could not start or restart service '$svcName'." -ForegroundColor Red
+
+            
+            # --- Ensure Google credentials path is set system-wide (Machine scope) ---
+            $gcloudKey = Join-Path $binDir "gcloud_key.json"
+            if (Test-Path $gcloudKey) {
+                [Environment]::SetEnvironmentVariable("GOOGLE_APPLICATION_CREDENTIALS", $gcloudKey, "Machine")
+                Write-Host "GOOGLE_APPLICATION_CREDENTIALS (Machine) set to $gcloudKey" -ForegroundColor Yellow
+            } else {
+                Write-Host "WARNING: gcloud_key.json not found at $gcloudKey" -ForegroundColor Yellow
+            }
+
+			# --- Install/Update STT/TTS proxy services via NSSM ---
+            $nssmExe    = Join-Path $binDir "nssm.exe"
+            $sttVenvPy  = Join-Path $binDir "sttvenv\Scripts\python.exe"
+            $sttProxyPy = Join-Path $binDir "STTProxy.py"
+            $ttsProxyPy = Join-Path $binDir "TTSProxy.py"
+
+            function Ensure-NssmProxyService([string]$svc, [string]$scriptPath, [string]$desc) {
+                if (-not (Test-Path $scriptPath)) {
+                    Write-Host "Skipping $svc (missing: $scriptPath)" -ForegroundColor Yellow
+                    return
+                }
+
+                # Install/update (idempotent)
+                & $nssmExe install $svc $sttVenvPy $scriptPath | Out-Null
+                & $nssmExe set $svc AppDirectory $binDir | Out-Null
+                & $nssmExe set $svc Start SERVICE_AUTO_START | Out-Null
+                & $nssmExe set $svc DependOnService $svcName | Out-Null
+                & $nssmExe set $svc Description $desc | Out-Null
+
+                # Restart on failure + basic logs
+                $logDir = Join-Path $InstallDir "LOG"
+                if (-not (Test-Path $logDir)) { New-Item -ItemType Directory -Path $logDir | Out-Null }
+
+                & $nssmExe set $svc AppExit Default Restart | Out-Null
+                & $nssmExe set $svc AppRestartDelay 2000 | Out-Null
+                & $nssmExe set $svc AppStdout (Join-Path (Join-Path $InstallDir "LOG") "$svc.out.log") | Out-Null
+                & $nssmExe set $svc AppStderr (Join-Path (Join-Path $InstallDir "LOG") "$svc.err.log") | Out-Null
+                & $nssmExe set $svc AppRotateFiles 1 | Out-Null
+                & $nssmExe set $svc AppRotateOnline 1 | Out-Null
+
+                # Start now
+                & $nssmExe start $svc | Out-Null
+                Write-Host "$svc started/updated." -ForegroundColor Green
+            }
+
+            if (-not (Test-Path $nssmExe)) {
+                Write-Host "WARNING: nssm.exe not found under $binDir. STT/TTS proxy services will not be installed." -ForegroundColor Yellow
+            } elseif (-not (Test-Path $sttVenvPy)) {
+                Write-Host "WARNING: STT/TTS venv not found ($sttVenvPy). Run Step 10 first." -ForegroundColor Yellow
+            } else {
+                Ensure-NssmProxyService "CreacodeSAS-STTProxy" $sttProxyPy "CreacodeSAS STT Proxy (FastAPI/uvicorn) for Speech-to-Text integration."
+                Ensure-NssmProxyService "CreacodeSAS-TTSProxy" $ttsProxyPy "CreacodeSAS TTS Proxy (FastAPI/uvicorn) for Text-to-Speech integration."
+            }
+		} catch {
+            $svc = Get-Service -Name $svcName -ErrorAction SilentlyContinue
+            if ($svc -and $svc.Status -eq "Running") {
+                Write-Host "WARNING: Service '$svcName' reported a start/restart issue, but it is Running. Continuing..." -ForegroundColor Yellow
+            } else {
+                Write-Host "ERROR: could not start or restart service '$svcName'." -ForegroundColor Red
+            }
         }
     }
 

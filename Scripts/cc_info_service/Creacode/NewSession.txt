@@ -27,11 +27,13 @@ EVENT CallActive()
         ReleaseSession(); 
     }
     
-	 
-    PlayAudio(_LEG_A_, "welcome.wav");
+	// Testing
+	RunSTTandTTS();
+	
+	PlayAudio(_LEG_A_, "welcome.wav");
 	
 	// Testing
-	RunScript("Creacode\\NewSession.txt", "ConnectToAgent");
+	//RunScript("Creacode\\NewSession.txt", "ConnectToAgent");
 
 	// Change the session promoting language by callers selection
 	ChangeLanguage();
@@ -45,10 +47,6 @@ EVENT CallActive()
 	if (GetCreditCardNumber() == FALSE) {
 		PlayAudio(_LEG_A_, "connect_to_agent.wav");
 		RunScript("Creacode\\NewSession.txt", "ConnectToAgent");
-
-		//LOG("Starting call to human Agent");
-		//StartCall(_LEG_A_, _LEG_B_, g_strFixedAgentNumber);
-		//RunScript("Creacode\\Ringing.txt");
 	}
 	
 	if (GetCreditCardPassword() == FALSE) {
@@ -108,6 +106,20 @@ EVENT CallActive()
 		// Connect call to an agent 
 		RunScript("Creacode\\NewSession.txt", "ConnectToAgent");
 	}
+}
+
+FUNCTION RunSTTandTTS()
+{
+	// Active STT and TTS language can be changed on run-time
+	// _LANGUAGE_ = "french";
+	string strText = STT(_LEG_A_, 0, 3);
+	
+	LOG("Converted Voice Text: " + strText);
+	
+	// Now speak previously captured speach
+	// or speak a static text (assuming current language is English)
+	// strText = "Hello world! This is my first TTS test";
+	TTS(_LEG_A_, strText);	
 }
 
 FUNCTION bool WebApiAuthenticateUser()
