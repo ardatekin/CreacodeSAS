@@ -28,7 +28,7 @@ EVENT CallActive()
     }
     
 	// Testing
-	RunSTTandTTS();
+	//RunSTTandTTS();
 	
 	PlayAudio(_LEG_A_, "welcome.wav");
 	
